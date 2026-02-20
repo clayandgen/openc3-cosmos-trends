@@ -37,7 +37,7 @@ function buildUData(parsedData, numCols) {
 
 // Create a new uPlot chart and render it into a container
 // Returns { chart, uData }
-export function createChart(container, headerRow, parsedData, existingTrend, threshold) {
+export function createChart(container, headerRow, parsedData, existingTrend, threshold, timeZone) {
   if (!container || !parsedData) return null
 
   const numCols = headerRow.length
@@ -49,13 +49,20 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
       value: (u, v) => {
         if (v == null) return '--'
         const d = new Date(v * 1000)
-        const date = d.getFullYear() + '-' +
-          String(d.getMonth() + 1).padStart(2, '0') + '-' +
-          String(d.getDate()).padStart(2, '0')
-        const time = String(d.getHours()).padStart(2, '0') + ':' +
-          String(d.getMinutes()).padStart(2, '0') + ':' +
-          String(d.getSeconds()).padStart(2, '0')
-        return date + '\n' + time
+        const utc = timeZone === 'utc'
+        const year = utc ? d.getUTCFullYear() : d.getFullYear()
+        const month = utc ? d.getUTCMonth() + 1 : d.getMonth() + 1
+        const day = utc ? d.getUTCDate() : d.getDate()
+        const hrs = utc ? d.getUTCHours() : d.getHours()
+        const min = utc ? d.getUTCMinutes() : d.getMinutes()
+        const sec = utc ? d.getUTCSeconds() : d.getSeconds()
+        const date = year + '-' +
+          String(month).padStart(2, '0') + '-' +
+          String(day).padStart(2, '0')
+        const time = String(hrs).padStart(2, '0') + ':' +
+          String(min).padStart(2, '0') + ':' +
+          String(sec).padStart(2, '0')
+        return date + '\n' + time + (utc ? ' UTC' : '')
       },
     },
   ]
@@ -104,18 +111,28 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
   const width = container.clientWidth || 800
   const height = 400
 
+  const opts = {
+    width,
+    height,
+    series,
+    scales: { x: { time: true } },
+    axes: [
+      { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' } },
+      { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' } },
+    ],
+    cursor: { drag: { x: true, y: false } },
+  }
+
+  // Shift dates so uPlot's local-time axis labels display UTC values
+  if (timeZone === 'utc') {
+    opts.tzDate = (ts) => {
+      const d = new Date(ts * 1000)
+      return new Date(d.getTime() + d.getTimezoneOffset() * 60000)
+    }
+  }
+
   const chart = new uPlot(
-    {
-      width,
-      height,
-      series,
-      scales: { x: { time: true } },
-      axes: [
-        { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' } },
-        { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' } },
-      ],
-      cursor: { drag: { x: true, y: false } },
-    },
+    opts,
     uData,
     container,
   )
