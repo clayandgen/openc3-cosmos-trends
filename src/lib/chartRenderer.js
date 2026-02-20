@@ -13,6 +13,15 @@ const COLORS = [
 ]
 
 const TREND_COLOR = '#ff6b6b'
+const THRESHOLD_COLOR = '#ffa726'
+
+const THRESHOLD_SERIES = {
+  label: 'Threshold',
+  stroke: THRESHOLD_COLOR,
+  width: 2,
+  dash: [6, 4],
+  points: { show: false },
+}
 
 // Build uPlot-shaped data arrays from parsed CSV data
 // Returns [times[], col1[], col2[], ...]
@@ -28,7 +37,7 @@ function buildUData(parsedData, numCols) {
 
 // Create a new uPlot chart and render it into a container
 // Returns { chart, uData }
-export function createChart(container, headerRow, parsedData, existingTrend) {
+export function createChart(container, headerRow, parsedData, existingTrend, threshold) {
   if (!container || !parsedData) return null
 
   const numCols = headerRow.length
@@ -75,6 +84,13 @@ export function createChart(container, headerRow, parsedData, existingTrend) {
     trendSeriesCount = 1
   }
 
+  // Add threshold as a flat series
+  let hasThreshold = threshold != null && isFinite(threshold)
+  if (hasThreshold) {
+    uData.push(uData[0].map(() => threshold))
+    series.push({ ...THRESHOLD_SERIES })
+  }
+
   const width = container.clientWidth || 800
   const height = 400
 
@@ -94,14 +110,65 @@ export function createChart(container, headerRow, parsedData, existingTrend) {
     container,
   )
 
-  return { chart, uData, trendSeriesCount }
+  const ro = new ResizeObserver((entries) => {
+    const cr = entries[0].contentRect
+    if (cr.width > 0) {
+      chart.setSize({ width: cr.width, height })
+    }
+  })
+  ro.observe(container)
+
+  const origDestroy = chart.destroy.bind(chart)
+  chart.destroy = () => {
+    ro.disconnect()
+    origDestroy()
+  }
+
+  return { chart, uData, trendSeriesCount, hasThreshold }
+}
+
+// Update or add/remove threshold series on an existing chart
+export function updateThreshold(chart, uData, hasThreshold, value) {
+  if (!chart) return hasThreshold
+  const valid = value != null && isFinite(value)
+
+  if (hasThreshold) {
+    if (valid) {
+      // Update existing threshold data
+      const idx = uData.length - 1
+      uData[idx] = uData[0].map(() => value)
+      chart.setData(uData)
+    } else {
+      // Remove threshold series
+      const idx = uData.length - 1
+      uData.splice(idx, 1)
+      chart.delSeries(idx)
+      chart.setData(uData)
+      return false
+    }
+  } else if (valid) {
+    // Add new threshold series
+    uData.push(uData[0].map(() => value))
+    chart.addSeries({ ...THRESHOLD_SERIES }, uData.length - 1)
+    chart.setData(uData)
+    return true
+  }
+
+  return hasThreshold
 }
 
 // Add a trend overlay to an existing chart
-export function addTrendSeries(chart, uData, headerRow, trendSeriesCount, points, label) {
+export function addTrendSeries(chart, uData, headerRow, trendSeriesCount, hasThreshold, points, label) {
   const lastDataTime = uData[0][uData[0].length - 1]
   const futurePts = points.filter((p) => p[0] > lastDataTime)
   const numCols = headerRow.length
+
+  // Remove threshold temporarily so trend inserts before it
+  let threshData = null
+  if (hasThreshold) {
+    threshData = uData.pop()
+    chart.delSeries(uData.length)
+  }
 
   for (const pt of futurePts) {
     uData[0].push(pt[0])
@@ -123,13 +190,31 @@ export function addTrendSeries(chart, uData, headerRow, trendSeriesCount, points
     },
     uData.length - 1,
   )
-  chart.setData(uData)
 
+  // Re-add threshold after trend
+  if (hasThreshold && threshData) {
+    // Extend threshold data for any new future timestamps
+    const threshVal = threshData[0]
+    while (threshData.length < uData[0].length) {
+      threshData.push(threshVal)
+    }
+    uData.push(threshData)
+    chart.addSeries({ ...THRESHOLD_SERIES }, uData.length - 1)
+  }
+
+  chart.setData(uData)
   return trendSeriesCount + 1
 }
 
 // Remove all trend series and future timestamps from the chart
-export function removeTrendSeries(chart, uData, headerRow, trendSeriesCount) {
+export function removeTrendSeries(chart, uData, headerRow, trendSeriesCount, hasThreshold) {
+  // Remove threshold first if present
+  let threshData = null
+  if (hasThreshold) {
+    threshData = uData.pop()
+    chart.delSeries(uData.length)
+  }
+
   while (trendSeriesCount > 0) {
     const idx = uData.length - 1
     uData.splice(idx, 1)
@@ -152,6 +237,13 @@ export function removeTrendSeries(chart, uData, headerRow, trendSeriesCount) {
     for (let c = 0; c < uData.length; c++) {
       uData[c].pop()
     }
+  }
+
+  // Re-add threshold
+  if (hasThreshold && threshData) {
+    threshData = uData[0].map(() => threshData[0])
+    uData.push(threshData)
+    chart.addSeries({ ...THRESHOLD_SERIES }, uData.length - 1)
   }
 
   chart.setData(uData)

@@ -14,7 +14,7 @@ const routes = [
   {
     path: '/',
     name: 'Trends',
-    component: () => import('./tools/trends/trends.vue'),
+    component: () => import('./tools/trends/Trends.vue'),
   },
   {
     path: '/:pathMatch(.*)*',

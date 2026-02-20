@@ -1,5 +1,8 @@
 import regression from 'regression'
 import { sinusoidalFit } from './sinusoidalFit'
+import { smaFit } from './sma'
+import { movingAverageFit } from './movingAverage'
+import { holtsLinearFit } from './holtsLinear'
 
 const TREND_TYPES = [
   'linear',
@@ -8,6 +11,9 @@ const TREND_TYPES = [
   'logarithmic',
   'power',
   'sinusoidal',
+  'sma',
+  'ema',
+  'holts',
 ]
 
 // Fit a trend to the given data points
@@ -20,6 +26,34 @@ export function fitTrend(data, config) {
   }
 
   const type = config.type || 'linear'
+
+  // Time-series models work directly on the raw data
+  if (type === 'sma' || type === 'ema' || type === 'holts') {
+    let result
+    try {
+      if (type === 'sma') {
+        const windowSize = config.windowSize != null ? config.windowSize : 10
+        result = smaFit(data, windowSize)
+      } else if (type === 'ema') {
+        const alpha = config.alpha != null ? config.alpha : 0.3
+        result = movingAverageFit(data, alpha)
+      } else {
+        const alpha = config.alpha != null ? config.alpha : 0.3
+        result = holtsLinearFit(data, alpha)
+      }
+    } catch {
+      return null
+    }
+    if (!result) return null
+    return {
+      equation: result.string || '',
+      r2: result.r2,
+      rmse: result.rmse,
+      predict: result.predict,
+      t0: data[0][0],
+      points: result.points,
+    }
+  }
 
   // Normalize timestamps: subtract t0 to avoid float precision issues
   const t0 = data[0][0]
@@ -139,4 +173,14 @@ function calcR2(data, predictFn) {
   return ssTot === 0 ? 0 : 1 - ssRes / ssTot
 }
 
-export { TREND_TYPES }
+const TREND_LABELS = {
+  sma: 'Simple Moving Avg',
+  ema: 'Exponential Moving Avg',
+  holts: "Holt's Linear",
+}
+
+function trendLabel(type) {
+  return TREND_LABELS[type] || type.charAt(0).toUpperCase() + type.slice(1)
+}
+
+export { TREND_TYPES, TREND_LABELS, trendLabel }
