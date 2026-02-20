@@ -26,7 +26,7 @@ jobs:
         run: |
           echo "## 🧪 Vitest Coverage" > coverage_output.txt
           echo '```' >> coverage_output.txt
-          pnpm test:coverage 2>&1 | tee -a coverage_output.txt
+          NO_COLOR=1 pnpm test:coverage 2>&1 | tee -a coverage_output.txt
           echo '```' >> coverage_output.txt
 
       - name: Post coverage comment
