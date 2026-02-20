@@ -109,7 +109,8 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
   }
 
   const width = container.clientWidth || 800
-  const height = 400
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 0
+  const height = Math.max(400, Math.round(vh * 0.6))
 
   const opts = {
     width,
@@ -140,7 +141,9 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
   const ro = new ResizeObserver((entries) => {
     const cr = entries[0].contentRect
     if (cr.width > 0) {
-      chart.setSize({ width: cr.width, height })
+      const wh = typeof window !== 'undefined' ? window.innerHeight : 0
+      const h = Math.max(400, Math.round(wh * 0.6))
+      chart.setSize({ width: cr.width, height: h })
     }
   })
   ro.observe(container)
