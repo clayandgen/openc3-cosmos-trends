@@ -7,6 +7,14 @@ const DEFAULT_EXTENSIONS = ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
 
 export default defineConfig((options) => {
   return {
+    test: {
+      globals: true,
+      coverage: {
+        provider: 'v8',
+        include: ['src/lib/**'],
+        reporter: ['text', 'html'],
+      },
+    },
     build: {
       outDir: 'tools/trends',
       emptyOutDir: true,

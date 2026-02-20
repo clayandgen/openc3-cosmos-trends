@@ -1,0 +1,35 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - name: Run tests with coverage
+        run: |
+          echo "## 🧪 Vitest Coverage" > coverage_output.txt
+          echo '```' >> coverage_output.txt
+          pnpm test:coverage 2>&1 | tee -a coverage_output.txt
+          echo '```' >> coverage_output.txt
+
+      - name: Post coverage comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: vitest-coverage
+          path: coverage_output.txt
