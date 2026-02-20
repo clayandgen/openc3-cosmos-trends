@@ -1,0 +1,5 @@
+# Set VARIABLEs here to allow variation in your plugin
+
+TOOL trends "Trends"
+  INLINE_URL main.js
+  ICON mdi-trending-up

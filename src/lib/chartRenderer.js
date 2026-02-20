@@ -1,0 +1,184 @@
+import uPlot from 'uplot'
+import 'uplot/dist/uPlot.min.css'
+
+const COLORS = [
+  '#00c7cb',
+  '#938bdb',
+  '#4dacff',
+  'lime',
+  'darkorange',
+  'red',
+  '#ff69b4',
+  '#00fa9a',
+]
+
+const TREND_COLOR = '#ff6b6b'
+
+// Build uPlot-shaped data arrays from parsed CSV data
+// Returns [times[], col1[], col2[], ...]
+function buildUData(parsedData, numCols) {
+  const uData = Array.from({ length: numCols }, () => [])
+  for (const row of parsedData) {
+    for (let c = 0; c < numCols; c++) {
+      uData[c].push(row[c])
+    }
+  }
+  return uData
+}
+
+// Create a new uPlot chart and render it into a container
+// Returns { chart, uData }
+export function createChart(container, headerRow, parsedData, existingTrend) {
+  if (!container || !parsedData) return null
+
+  const numCols = headerRow.length
+  const uData = buildUData(parsedData, numCols)
+
+  const series = [
+    {
+      label: headerRow[0],
+      value: (u, v) => (v == null ? '--' : new Date(v * 1000).toISOString()),
+    },
+  ]
+  for (let c = 1; c < numCols; c++) {
+    series.push({
+      label: headerRow[c],
+      stroke: COLORS[(c - 1) % COLORS.length],
+      width: 2,
+    })
+  }
+
+  let trendSeriesCount = 0
+
+  // Re-apply an existing trend (e.g. when navigating back to step 3)
+  if (existingTrend && existingTrend.points) {
+    const lastDataTime = uData[0][uData[0].length - 1]
+    const futurePts = existingTrend.points.filter((p) => p[0] > lastDataTime)
+
+    for (const pt of futurePts) {
+      uData[0].push(pt[0])
+      for (let c = 1; c < numCols; c++) {
+        uData[c].push(null)
+      }
+    }
+
+    const trendData = interpolateTrendData(uData[0], existingTrend.points)
+    uData.push(trendData)
+
+    series.push({
+      label: `${existingTrend.label} Trend`,
+      stroke: TREND_COLOR,
+      width: 2,
+      dash: [10, 5],
+      points: { show: false },
+    })
+    trendSeriesCount = 1
+  }
+
+  const width = container.clientWidth || 800
+  const height = 400
+
+  const chart = new uPlot(
+    {
+      width,
+      height,
+      series,
+      scales: { x: { time: true } },
+      axes: [
+        { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' } },
+        { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' } },
+      ],
+      cursor: { drag: { x: true, y: false } },
+    },
+    uData,
+    container,
+  )
+
+  return { chart, uData, trendSeriesCount }
+}
+
+// Add a trend overlay to an existing chart
+export function addTrendSeries(chart, uData, headerRow, trendSeriesCount, points, label) {
+  const lastDataTime = uData[0][uData[0].length - 1]
+  const futurePts = points.filter((p) => p[0] > lastDataTime)
+  const numCols = headerRow.length
+
+  for (const pt of futurePts) {
+    uData[0].push(pt[0])
+    for (let c = 1; c < numCols + trendSeriesCount; c++) {
+      uData[c].push(null)
+    }
+  }
+
+  const trendData = interpolateTrendData(uData[0], points)
+  uData.push(trendData)
+
+  chart.addSeries(
+    {
+      label,
+      stroke: TREND_COLOR,
+      width: 2,
+      dash: [10, 5],
+      points: { show: false },
+    },
+    uData.length - 1,
+  )
+  chart.setData(uData)
+
+  return trendSeriesCount + 1
+}
+
+// Remove all trend series and future timestamps from the chart
+export function removeTrendSeries(chart, uData, headerRow, trendSeriesCount) {
+  while (trendSeriesCount > 0) {
+    const idx = uData.length - 1
+    uData.splice(idx, 1)
+    chart.delSeries(idx)
+    trendSeriesCount--
+  }
+
+  // Trim future timestamps where all real data columns are null
+  const numCols = headerRow.length
+  while (uData[0].length > 0) {
+    const last = uData[0].length - 1
+    let allNull = true
+    for (let c = 1; c < numCols; c++) {
+      if (uData[c][last] !== null && uData[c][last] !== undefined) {
+        allNull = false
+        break
+      }
+    }
+    if (!allNull) break
+    for (let c = 0; c < uData.length; c++) {
+      uData[c].pop()
+    }
+  }
+
+  chart.setData(uData)
+  return 0
+}
+
+// Build a trend data array aligned to chart timestamps, interpolating gaps
+function interpolateTrendData(timestamps, points) {
+  const trendMap = new Map(points.map((p) => [p[0], p[1]]))
+  const trendData = timestamps.map((t) => trendMap.get(t) ?? null)
+
+  for (let i = 0; i < timestamps.length; i++) {
+    if (trendData[i] === null) {
+      const t = timestamps[i]
+      if (t >= points[0][0] && t <= points[points.length - 1][0]) {
+        for (let j = 0; j < points.length - 1; j++) {
+          if (t >= points[j][0] && t <= points[j + 1][0]) {
+            const frac =
+              (t - points[j][0]) / (points[j + 1][0] - points[j][0])
+            trendData[i] =
+              points[j][1] + frac * (points[j + 1][1] - points[j][1])
+            break
+          }
+        }
+      }
+    }
+  }
+
+  return trendData
+}
