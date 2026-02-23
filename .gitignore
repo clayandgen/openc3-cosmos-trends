@@ -1,4 +1,4 @@
 node_modules/
-tools/
+/tools/
 *.gem
 coverage/
