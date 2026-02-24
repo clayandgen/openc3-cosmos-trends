@@ -57,35 +57,6 @@
               class="mb-4"
               @update:model-value="onPolyOrderInput"
             />
-            <v-text-field
-              v-if="trendType === 'sma'"
-              :model-value="windowSize"
-              type="number"
-              label="Window Size"
-              density="comfortable"
-              hide-details
-              :min="2"
-              :max="100"
-              class="mb-4"
-              @update:model-value="$emit('update:windowSize', Math.max(2, Number($event) || 2))"
-            />
-            <div v-if="trendType === 'ema' || trendType === 'holts'" class="d-flex align-center mb-4">
-              <v-text-field
-                :model-value="alpha"
-                type="text"
-                inputmode="decimal"
-                label="Smoothing Factor (α)"
-                density="comfortable"
-                hide-details
-                @update:model-value="onAlphaInput"
-              />
-              <v-tooltip location="right" max-width="300">
-                <template #activator="{ props }">
-                  <v-icon v-bind="props" size="small" class="ml-2">mdi-information-outline</v-icon>
-                </template>
-                Controls how much weight is given to recent data vs. historical data (0–1). Higher values (0.5–0.8) track recent changes closely but retain noise. Lower values (0.1–0.3) produce a smoother, more stable line. Use lower values for noisy data, higher for clean data where you want to follow recent movement.
-              </v-tooltip>
-            </div>
             <div class="d-flex ga-2 mb-4">
               <v-text-field
                 :model-value="horizonValue"
@@ -214,11 +185,9 @@ export default {
     selectedColumn: { type: String, default: null },
     trendType: { type: String, default: 'linear' },
     polyOrder: { type: Number, default: 2 },
-    horizonSec: { type: Number, default: 3600 },
+    horizonSec: { type: Number, default: 43200 },
     activeTrend: { type: Object, default: null },
     threshold: { type: Number, default: null },
-    alpha: { type: Number, default: 0.3 },
-    windowSize: { type: Number, default: 10 },
     timeZone: { type: String, default: 'local' },
   },
   emits: [
@@ -230,12 +199,10 @@ export default {
     'update:polyOrder',
     'update:horizonSec',
     'update:threshold',
-    'update:alpha',
-    'update:windowSize',
   ],
   data() {
     const unitMultipliers = { Seconds: 1, Minutes: 60, Hours: 3600, Days: 86400 }
-    const defaultUnit = 'Minutes'
+    const defaultUnit = 'Hours'
     return {
       trendTypes: TREND_TYPES.map((t) => {
         return {
@@ -266,9 +233,6 @@ export default {
         logarithmic: 'Fast initial change that levels off (y = a + b\u00B7ln(x)). Good for diminishing returns.',
         power: 'Scaling relationship (y = a\u00B7x^b). Common in physical systems and proportional relationships.',
         sinusoidal: 'Periodic wave fit (y = A\u00B7sin(Bx+C)+D). Best for cyclic or oscillating data.',
-        sma: 'Simple moving average over a rolling window. Smooths noisy data by averaging nearby points. Forecast extends the recent trend.',
-        ema: 'Exponential moving average that weights recent data more heavily. Forecast extends the recent trend direction.',
-        holts: 'Double exponential smoothing that tracks level and trend. Adapts to recent changes for short-term forecasting.',
       }
       return descriptions[this.trendType] || ''
     },
@@ -332,11 +296,6 @@ export default {
       const num = Math.round(Number(val))
       if (isNaN(num)) return
       this.$emit('update:polyOrder', Math.min(10, Math.max(1, num)))
-    },
-    onAlphaInput(val) {
-      const num = Number(val)
-      if (isNaN(num)) return
-      this.$emit('update:alpha', Math.min(1, Math.max(0, num)))
     },
     emitHorizonSec() {
       const multiplier = this.unitMultipliers[this.horizonUnit] || 1

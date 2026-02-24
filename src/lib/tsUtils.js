@@ -21,30 +21,6 @@ export function interpolate(xs, vals, x) {
   return vals[lo] + t * (vals[hi] - vals[lo])
 }
 
-// Weighted average slope from the last portion of fitted values
-// Gives more weight to recent segments for stable extrapolation
-export function avgSlope(xs, vals) {
-  const n = xs.length
-  if (n < 2) return 0
-
-  // Use up to the last 20% of points (min 2 segments)
-  const windowSize = Math.max(2, Math.ceil(n * 0.2))
-  const start = n - windowSize
-
-  let weightedSlope = 0
-  let totalWeight = 0
-  for (let i = start; i < n - 1; i++) {
-    const dx = xs[i + 1] - xs[i]
-    if (dx === 0) continue
-    const slope = (vals[i + 1] - vals[i]) / dx
-    const weight = i - start + 1 // linearly increasing weight
-    weightedSlope += slope * weight
-    totalWeight += weight
-  }
-
-  return totalWeight > 0 ? weightedSlope / totalWeight : 0
-}
-
 // Calculate R² and RMSE from original values and fitted values
 export function calcFitStats(ys, fitted) {
   const n = ys.length

@@ -23,20 +23,6 @@ describe('fitTrend', () => {
     },
   )
 
-  it.each(['sma', 'ema', 'holts'])(
-    'returns non-null result with expected keys for %s',
-    (type) => {
-      const result = fitTrend(linearData, { type })
-      expect(result).not.toBeNull()
-      expect(result).toHaveProperty('equation')
-      expect(result).toHaveProperty('r2')
-      expect(result).toHaveProperty('rmse')
-      expect(result).toHaveProperty('predict')
-      expect(result).toHaveProperty('t0')
-      expect(result).toHaveProperty('points')
-    },
-  )
-
   it('returns non-null result for sinusoidal', () => {
     const sineData = Array.from({ length: 100 }, (_, i) => [
       i,
@@ -79,28 +65,19 @@ describe('generatePredictionPoints', () => {
 })
 
 describe('TREND_TYPES', () => {
-  it('contains all 9 types', () => {
-    expect(TREND_TYPES).toHaveLength(9)
+  it('contains all 6 types', () => {
+    expect(TREND_TYPES).toHaveLength(6)
     expect(TREND_TYPES).toContain('linear')
     expect(TREND_TYPES).toContain('polynomial')
     expect(TREND_TYPES).toContain('exponential')
     expect(TREND_TYPES).toContain('logarithmic')
     expect(TREND_TYPES).toContain('power')
     expect(TREND_TYPES).toContain('sinusoidal')
-    expect(TREND_TYPES).toContain('sma')
-    expect(TREND_TYPES).toContain('ema')
-    expect(TREND_TYPES).toContain('holts')
   })
 })
 
 describe('trendLabel', () => {
-  it('returns display names for sma, ema, holts', () => {
-    expect(trendLabel('sma')).toBe('Simple Moving Avg')
-    expect(trendLabel('ema')).toBe('Exponential Moving Avg')
-    expect(trendLabel('holts')).toBe("Holt's Linear")
-  })
-
-  it('capitalizes other types', () => {
+  it('capitalizes types', () => {
     expect(trendLabel('linear')).toBe('Linear')
     expect(trendLabel('polynomial')).toBe('Polynomial')
   })

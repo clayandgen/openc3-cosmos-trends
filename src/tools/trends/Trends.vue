@@ -31,8 +31,6 @@
       v-model:horizon-sec="horizonSec"
       :active-trend="activeTrend"
       v-model:threshold="threshold"
-      v-model:alpha="alpha"
-      v-model:window-size="windowSize"
       :time-zone="timeZone"
       @back="goBackToUpload"
       @calculate="calculateTrend"
@@ -72,12 +70,10 @@ export default {
       // Trend settings
       trendType: 'linear',
       polyOrder: 2,
-      horizonSec: 3600,
+      horizonSec: 43200,
       selectedColumn: null,
       activeTrend: null,
       threshold: null,
-      alpha: 0.3,
-      windowSize: 10,
       timeZone: 'local',
       menus: [
         {
@@ -183,38 +179,18 @@ export default {
       const result = fitTrend(data, {
         type: this.trendType,
         order: this.polyOrder,
-        alpha: this.alpha,
-        windowSize: this.windowSize,
       })
       if (!result) return
 
       const startTs = data[0][0]
       const lastTs = data[data.length - 1][0]
 
-      let points
-      const isTimeSeries = this.trendType === 'sma' || this.trendType === 'ema' || this.trendType === 'holts'
-      if (isTimeSeries && result.points) {
-        // Use actual fitted values for in-range, then forecast-only for horizon
-        points = [...result.points]
-        if (this.horizonSec > 0) {
-          const forecastPoints = generatePredictionPoints(
-            result.predict,
-            lastTs,
-            lastTs,
-            this.horizonSec,
-            100,
-          )
-          // Skip the first point (duplicate of last fitted point)
-          points.push(...forecastPoints.slice(1))
-        }
-      } else {
-        points = generatePredictionPoints(
-          result.predict,
-          startTs,
-          lastTs,
-          this.horizonSec,
-        )
-      }
+      const points = generatePredictionPoints(
+        result.predict,
+        startTs,
+        lastTs,
+        this.horizonSec,
+      )
 
       this.activeTrend = {
         type: this.trendType,

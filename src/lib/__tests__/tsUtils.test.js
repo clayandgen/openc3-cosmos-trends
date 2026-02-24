@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { interpolate, avgSlope, calcFitStats } from '../tsUtils'
+import { interpolate, calcFitStats } from '../tsUtils'
 
 describe('interpolate', () => {
   const xs = [0, 1, 2, 3, 4]
@@ -32,34 +32,6 @@ describe('interpolate', () => {
     const eqVals = [10, 20, 30]
     // dx=0 at lo, should return vals[lo]
     expect(interpolate(eqXs, eqVals, 1)).toBe(10)
-  })
-})
-
-describe('avgSlope', () => {
-  it('returns constant slope for linearly increasing data', () => {
-    const xs = [0, 1, 2, 3, 4]
-    const vals = [0, 2, 4, 6, 8]
-    expect(avgSlope(xs, vals)).toBeCloseTo(2, 5)
-  })
-
-  it('returns 0 for a single point', () => {
-    expect(avgSlope([0], [5])).toBe(0)
-  })
-
-  it('skips segments with zero dx', () => {
-    const xs = [0, 0, 1]
-    const vals = [0, 5, 10]
-    // Only the last segment (0->1, 5->10) contributes
-    expect(avgSlope(xs, vals)).toBeCloseTo(5, 5)
-  })
-
-  it('weights recent segments more heavily', () => {
-    // 10 points where slope changes from 1 to 10
-    const xs = Array.from({ length: 10 }, (_, i) => i)
-    const vals = [0, 1, 2, 3, 4, 5, 7, 10, 14, 19]
-    const slope = avgSlope(xs, vals)
-    // Recent slopes are steeper, so average should be > simple average
-    expect(slope).toBeGreaterThan(3)
   })
 })
 
