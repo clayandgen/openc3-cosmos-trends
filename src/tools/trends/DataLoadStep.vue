@@ -279,8 +279,13 @@ export default {
                 const timeMs = packet['__time'] / 1_000_000
                 const timeSec = timeMs / 1000
                 const value = packet['0']
-                if (value != null && isFinite(value)) {
+                if (value != null && isFinite(Number(value))) {
                   collectedRows.push([timeSec, Number(value)])
+                } else if (value != null && !isFinite(Number(value))) {
+                  this.fetchError = `Non-numeric data received for this item (value: "${value}"). Trend analysis requires numeric telemetry data.`
+                  this.fetching = false
+                  this.disconnectCable()
+                  return
                 }
               }
             },

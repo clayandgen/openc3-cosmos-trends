@@ -12,6 +12,18 @@ const COLORS = [
   '#00fa9a',
 ]
 
+// Format large numbers with SI suffixes (K, M, B, T)
+function formatAxisValue(self, rawValue) {
+  if (rawValue == null) return '--'
+  const abs = Math.abs(rawValue)
+  if (abs >= 1e12) return (rawValue / 1e12).toFixed(1) + 'T'
+  if (abs >= 1e9) return (rawValue / 1e9).toFixed(1) + 'B'
+  if (abs >= 1e6) return (rawValue / 1e6).toFixed(1) + 'M'
+  if (abs >= 1e3) return (rawValue / 1e3).toFixed(1) + 'K'
+  if (Number.isInteger(rawValue)) return rawValue.toString()
+  return rawValue.toPrecision(4)
+}
+
 const TREND_COLOR = '#ff6b6b'
 const THRESHOLD_COLOR = '#ffa726'
 
@@ -71,6 +83,7 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
       label: headerRow[c],
       stroke: COLORS[(c - 1) % COLORS.length],
       width: 2,
+      value: (u, v) => formatAxisValue(u, v),
     })
   }
 
@@ -119,7 +132,7 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
     scales: { x: { time: true } },
     axes: [
       { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' } },
-      { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' } },
+      { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' }, values: (u, vals) => vals.map(v => formatAxisValue(u, v)) },
     ],
     cursor: { drag: { x: true, y: false } },
   }
