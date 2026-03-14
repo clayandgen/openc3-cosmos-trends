@@ -34,6 +34,9 @@
       v-model:show-limits="showLimits"
       :limits-values="limitsValues"
       :time-zone="timeZone"
+      :anomaly-result="anomalyResult"
+      v-model:sigma-n="sigmaN"
+      v-model:show-anomalies="showAnomalies"
       @back="goBackToUpload"
       @calculate="calculateTrend"
       @clear="clearTrend"
@@ -46,12 +49,14 @@ import { TopBar } from '@openc3/vue-common/components'
 import { OpenC3Api } from '@openc3/js-common/services'
 import DataLoadStep from './DataLoadStep'
 import AnalyzeStep from './AnalyzeStep'
-import { fitTrend, generatePredictionPoints, trendLabel } from '../../lib/trendEngine'
+import { fitTrend, generatePredictionPoints, trendLabel, detectAnomalies } from '../../lib/trendEngine'
 import {
   createChart,
   addTrendSeries,
   removeTrendSeries,
   updateThreshold,
+  addAnomalySeries,
+  removeAnomalySeries,
 } from '../../lib/chartRenderer'
 
 export default {
@@ -76,6 +81,13 @@ export default {
       selectedColumn: null,
       activeTrend: null,
       threshold: null,
+      sigmaN: 2,
+      showAnomalies: false,
+      anomalyResult: null,
+      hasAnomaly: false,
+      sigmaBandsRef: { value: null },
+      trendPredict: null, // saved predict function for re-running anomaly detection
+      trendData: null, // saved data used for trend fitting
       timeZone: 'local',
       limitsValues: null,
       showLimits: false,
@@ -131,6 +143,24 @@ export default {
       this.limitsRef.value = val ? this.limitsValues : null
       if (this.chart) this.chart.redraw()
     },
+    horizonSec() {
+      if (this.activeTrend) {
+        this.calculateTrend()
+      }
+    },
+    sigmaN() {
+      if (this.activeTrend && this.showAnomalies) {
+        this.runAnomalyDetection()
+      }
+    },
+    showAnomalies(val) {
+      if (val && this.activeTrend) {
+        this.runAnomalyDetection()
+      } else {
+        this.clearAnomalyState()
+        if (this.chart) this.chart.redraw()
+      }
+    },
   },
   beforeUnmount() {
     this.destroyChart()
@@ -169,6 +199,7 @@ export default {
         this.threshold,
         this.timeZone,
         this.limitsRef,
+        this.sigmaBandsRef,
       )
       if (result) {
         this.chart = result.chart
@@ -180,8 +211,6 @@ export default {
 
     calculateTrend() {
       if (!this.parsedData || this.parsedData.length < 2) return
-
-      this.clearTrend()
 
       const colIdx = this.headerRow.indexOf(this.selectedColumn)
       if (colIdx < 1) return
@@ -208,6 +237,9 @@ export default {
         this.horizonSec,
       )
 
+      // Strip all overlays from chart in one pass (anomaly → trend)
+      this.stripOverlays()
+
       this.activeTrend = {
         type: this.trendType,
         r2: result.r2,
@@ -215,6 +247,10 @@ export default {
         equation: result.equation,
         points,
       }
+
+      // Save predict function and data for re-running anomaly detection on sigma change
+      this.trendPredict = result.predict
+      this.trendData = data
 
       if (this.chart && this.uData) {
         const label = `${this.selectedColumn} ${this.capitalize(this.trendType)} Trend`
@@ -228,9 +264,40 @@ export default {
           label,
         )
       }
+
+      // Run anomaly detection if enabled
+      if (this.showAnomalies) {
+        this.runAnomalyDetection()
+      }
+
+      // Force x-axis to fit the new data range (uPlot doesn't auto-refit on setData)
+      if (this.chart && this.uData && this.uData[0].length > 0) {
+        this.chart.setScale('x', {
+          min: this.uData[0][0],
+          max: this.uData[0][this.uData[0].length - 1],
+        })
+      }
     },
 
     clearTrend() {
+      this.stripOverlays()
+      this.activeTrend = null
+      this.trendPredict = null
+      this.trendData = null
+    },
+
+    // Clear anomaly series and state from the chart
+    clearAnomalyState() {
+      if (this.chart && this.uData && this.hasAnomaly) {
+        this.hasAnomaly = removeAnomalySeries(this.chart, this.uData, this.hasAnomaly, this.hasThreshold)
+      }
+      this.anomalyResult = null
+      this.sigmaBandsRef.value = null
+    },
+
+    // Remove anomaly + trend overlays from the chart
+    stripOverlays() {
+      this.clearAnomalyState()
       if (this.chart && this.uData && this.trendSeriesCount > 0) {
         this.trendSeriesCount = removeTrendSeries(
           this.chart,
@@ -240,7 +307,45 @@ export default {
           this.hasThreshold,
         )
       }
-      this.activeTrend = null
+    },
+
+    runAnomalyDetection() {
+      if (!this.trendPredict || !this.trendData) return
+
+      const result = detectAnomalies(this.trendData, this.trendPredict, this.sigmaN)
+      this.anomalyResult = result
+
+      if (this.chart && this.uData) {
+        // Compute sigma band arrays aligned to chart timestamps
+        const upper = []
+        const lower = []
+        for (const t of this.uData[0]) {
+          const predicted = this.trendPredict(t)
+          if (isFinite(predicted)) {
+            upper.push(predicted + result.meanResidual + this.sigmaN * result.sigma)
+            lower.push(predicted + result.meanResidual - this.sigmaN * result.sigma)
+          } else {
+            upper.push(null)
+            lower.push(null)
+          }
+        }
+        this.sigmaBandsRef.value = { upper, lower }
+
+        // Replace anomaly series
+        if (this.hasAnomaly) {
+          this.hasAnomaly = removeAnomalySeries(this.chart, this.uData, this.hasAnomaly, this.hasThreshold)
+        }
+        if (result.anomalies.length > 0) {
+          this.hasAnomaly = addAnomalySeries(
+            this.chart,
+            this.uData,
+            result.anomalies,
+            this.hasThreshold,
+          )
+        }
+
+        this.chart.redraw()
+      }
     },
 
     goBackToUpload() {
@@ -268,20 +373,6 @@ export default {
       } catch (_) {
         // No limits available — that's fine
       }
-    },
-
-    resetAll() {
-      this.destroyChart()
-      this.parsedData = null
-      this.headerRow = null
-      this.csvMetadata = null
-      this.activeTrend = null
-      this.threshold = null
-      this.trendSeriesCount = 0
-      this.limitsValues = null
-      this.showLimits = false
-      this.limitsRef.value = null
-      this.step = 1
     },
 
     destroyChart() {

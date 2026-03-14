@@ -1,16 +1,18 @@
 # OpenC3 COSMOS Trends
 
-A trend analysis tool for [OpenC3 COSMOS](https://openc3.com). Upload telemetry CSV data, fit trend models, and forecast future values.
+A trend analysis plugin for [OpenC3 COSMOS](https://openc3.com). Load telemetry data from CSV files or live connections, fit statistical trend lines, and predict future values.
 
-![Trends Tool](public/store_img.png)
+![Trends Plugin](public/store_img.png)
 
 ## Features
 
-- **Upload CSV** — Import data exported from Data Extractor (timestamp + numeric columns)
-- **9 Trend Models** — Linear, Polynomial, Exponential, Logarithmic, Power, Sinusoidal, Simple Moving Average, Exponential Moving Average, Holt's Linear
-- **Forecasting** — Predict ahead with configurable time horizon
-- **Threshold Crossing** — Set a threshold and see when the trend line is predicted to cross it
-- **Export** — Save charts as PNG or trend data as CSV
+- **Data Sources** — Import CSV from Data Extractor or connect to live telemetry
+- **Trend Fitting** — Linear, polynomial, exponential, logarithmic, power, and sinusoidal curve fits with R² and RMSE metrics
+- **Forecasting** — Extrapolate trends into the future with configurable time horizons
+- **Threshold Crossing** — Set a threshold and see when the trend is estimated to reach it
+- **Anomaly Detection** — Flag data points outside N standard deviations from the trend, with sigma band visualization
+- **Limits Overlay** — Display COSMOS item limits (red/yellow/green) on the chart
+- **Export** — Save charts as PNG or export trend data as CSV
 
 ## Building
 

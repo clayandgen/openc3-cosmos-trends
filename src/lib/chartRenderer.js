@@ -106,6 +106,56 @@ function limitsPlugin(limitsRef) {
   }
 }
 
+const ANOMALY_COLOR = '#ff1744'
+
+// Build a uPlot plugin that draws sigma bands behind the data
+function sigmaBandsPlugin(bandsRef) {
+  return {
+    hooks: {
+      draw: (u) => {
+        const bands = bandsRef.value
+        if (!bands || !bands.upper || !bands.lower) return
+
+        const { ctx } = u
+        const timestamps = u.data[0]
+        if (!timestamps || timestamps.length === 0) return
+
+        ctx.save()
+        ctx.fillStyle = 'rgba(100,100,255,0.12)'
+        ctx.beginPath()
+
+        // Draw forward path along upper bound
+        let started = false
+        for (let i = 0; i < timestamps.length; i++) {
+          if (i >= bands.upper.length) break
+          if (bands.upper[i] == null) continue
+          const x = u.valToPos(timestamps[i], 'x', true)
+          const y = u.valToPos(bands.upper[i], 'y', true)
+          if (!started) {
+            ctx.moveTo(x, y)
+            started = true
+          } else {
+            ctx.lineTo(x, y)
+          }
+        }
+
+        // Draw backward path along lower bound
+        const len = Math.min(timestamps.length, bands.lower.length)
+        for (let i = len - 1; i >= 0; i--) {
+          if (bands.lower[i] == null) continue
+          const x = u.valToPos(timestamps[i], 'x', true)
+          const y = u.valToPos(bands.lower[i], 'y', true)
+          ctx.lineTo(x, y)
+        }
+
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      },
+    },
+  }
+}
+
 const THRESHOLD_SERIES = {
   label: 'Threshold',
   stroke: THRESHOLD_COLOR,
@@ -128,7 +178,7 @@ function buildUData(parsedData, numCols) {
 
 // Create a new uPlot chart and render it into a container
 // Returns { chart, uData }
-export function createChart(container, headerRow, parsedData, existingTrend, threshold, timeZone, limitsRef) {
+export function createChart(container, headerRow, parsedData, existingTrend, threshold, timeZone, limitsRef, sigmaBandsRef) {
   if (!container || !parsedData) return null
 
   const numCols = headerRow.length
@@ -211,10 +261,13 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
     scales: { x: { time: true } },
     axes: [
       { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' } },
-      { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' }, values: (u, vals) => vals.map(v => formatAxisValue(u, v)) },
+      { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' }, size: 80, values: (u, vals) => vals.map(v => formatAxisValue(u, v)) },
     ],
     cursor: { drag: { x: true, y: false } },
-    plugins: limitsRef ? [limitsPlugin(limitsRef)] : [],
+    plugins: [
+      ...(limitsRef ? [limitsPlugin(limitsRef)] : []),
+      ...(sigmaBandsRef ? [sigmaBandsPlugin(sigmaBandsRef)] : []),
+    ],
   }
 
   // Shift dates so uPlot's local-time axis labels display UTC values
@@ -231,6 +284,18 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
     container,
   )
 
+  // Double-click to reset zoom to full data range
+  const overEl = chart.root.querySelector('.u-over')
+  const onDblClick = () => {
+    const ts = chart.data[0]
+    if (ts && ts.length > 0) {
+      chart.setScale('x', { min: ts[0], max: ts[ts.length - 1] })
+    }
+  }
+  if (overEl) {
+    overEl.addEventListener('dblclick', onDblClick)
+  }
+
   const ro = new ResizeObserver((entries) => {
     const cr = entries[0].contentRect
     if (cr.width > 0) {
@@ -243,6 +308,7 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
 
   const origDestroy = chart.destroy.bind(chart)
   chart.destroy = () => {
+    if (overEl) overEl.removeEventListener('dblclick', onDblClick)
     ro.disconnect()
     origDestroy()
   }
@@ -280,97 +346,131 @@ export function updateThreshold(chart, uData, hasThreshold, value) {
   return hasThreshold
 }
 
+// Temporarily remove threshold series, run a callback, then re-add threshold.
+// Ensures series are always inserted before the threshold.
+function withoutThreshold(chart, uData, hasThreshold, fn) {
+  let threshData = null
+  if (hasThreshold) {
+    threshData = uData.pop()
+    chart.delSeries(uData.length)
+  }
+
+  fn()
+
+  if (hasThreshold && threshData) {
+    const threshVal = threshData[0]
+    const threshArray = uData[0].map(() => threshVal)
+    uData.push(threshArray)
+    chart.addSeries({ ...THRESHOLD_SERIES }, uData.length - 1)
+  }
+
+  chart.setData(uData)
+}
+
 // Add a trend overlay to an existing chart
 export function addTrendSeries(chart, uData, headerRow, trendSeriesCount, hasThreshold, points, label) {
   const lastDataTime = uData[0][uData[0].length - 1]
   const futurePts = points.filter((p) => p[0] > lastDataTime)
   const numCols = headerRow.length
 
-  // Remove threshold temporarily so trend inserts before it
-  let threshData = null
-  if (hasThreshold) {
-    threshData = uData.pop()
-    chart.delSeries(uData.length)
-  }
-
-  for (const pt of futurePts) {
-    uData[0].push(pt[0])
-    for (let c = 1; c < numCols + trendSeriesCount; c++) {
-      uData[c].push(null)
+  withoutThreshold(chart, uData, hasThreshold, () => {
+    for (const pt of futurePts) {
+      uData[0].push(pt[0])
+      for (let c = 1; c < numCols + trendSeriesCount; c++) {
+        uData[c].push(null)
+      }
     }
-  }
 
-  const trendData = interpolateTrendData(uData[0], points)
-  uData.push(trendData)
+    const trendData = interpolateTrendData(uData[0], points)
+    uData.push(trendData)
 
-  chart.addSeries(
-    {
-      label,
-      stroke: TREND_COLOR,
-      width: 2,
-      dash: [10, 5],
-      points: { show: false },
-    },
-    uData.length - 1,
-  )
+    chart.addSeries(
+      {
+        label,
+        stroke: TREND_COLOR,
+        width: 2,
+        dash: [10, 5],
+        points: { show: false },
+      },
+      uData.length - 1,
+    )
+  })
 
-  // Re-add threshold after trend
-  if (hasThreshold && threshData) {
-    // Extend threshold data for any new future timestamps
-    const threshVal = threshData[0]
-    while (threshData.length < uData[0].length) {
-      threshData.push(threshVal)
-    }
-    uData.push(threshData)
-    chart.addSeries({ ...THRESHOLD_SERIES }, uData.length - 1)
-  }
-
-  chart.setData(uData)
   return trendSeriesCount + 1
 }
 
 // Remove all trend series and future timestamps from the chart
 export function removeTrendSeries(chart, uData, headerRow, trendSeriesCount, hasThreshold) {
-  // Remove threshold first if present
-  let threshData = null
-  if (hasThreshold) {
-    threshData = uData.pop()
-    chart.delSeries(uData.length)
-  }
+  const numCols = headerRow.length
 
-  while (trendSeriesCount > 0) {
+  withoutThreshold(chart, uData, hasThreshold, () => {
+    while (trendSeriesCount > 0) {
+      const idx = uData.length - 1
+      uData.splice(idx, 1)
+      chart.delSeries(idx)
+      trendSeriesCount--
+    }
+
+    // Trim future timestamps where all real data columns are null
+    while (uData[0].length > 0) {
+      const last = uData[0].length - 1
+      let allNull = true
+      for (let c = 1; c < numCols; c++) {
+        if (uData[c][last] !== null && uData[c][last] !== undefined) {
+          allNull = false
+          break
+        }
+      }
+      if (!allNull) break
+      for (let c = 0; c < uData.length; c++) {
+        uData[c].pop()
+      }
+    }
+  })
+
+  return 0
+}
+
+// Add a scatter series for anomaly points (red dots, no line)
+export function addAnomalySeries(chart, uData, anomalies, hasThreshold) {
+  if (!chart || !anomalies || anomalies.length === 0) return false
+
+  const anomalySet = new Map(anomalies.map((a) => [a.ts, a.value]))
+  const anomalyData = uData[0].map((t) => anomalySet.get(t) ?? null)
+
+  withoutThreshold(chart, uData, hasThreshold, () => {
+    uData.push(anomalyData)
+    chart.addSeries(
+      {
+        label: 'Anomalies',
+        stroke: ANOMALY_COLOR,
+        width: 0,
+        points: {
+          show: true,
+          size: 10,
+          fill: ANOMALY_COLOR,
+          stroke: ANOMALY_COLOR,
+        },
+        paths: () => null,
+      },
+      uData.length - 1,
+    )
+  })
+
+  return true
+}
+
+// Remove anomaly series from the chart
+export function removeAnomalySeries(chart, uData, hasAnomaly, hasThreshold) {
+  if (!chart || !hasAnomaly) return false
+
+  withoutThreshold(chart, uData, hasThreshold, () => {
     const idx = uData.length - 1
     uData.splice(idx, 1)
     chart.delSeries(idx)
-    trendSeriesCount--
-  }
+  })
 
-  // Trim future timestamps where all real data columns are null
-  const numCols = headerRow.length
-  while (uData[0].length > 0) {
-    const last = uData[0].length - 1
-    let allNull = true
-    for (let c = 1; c < numCols; c++) {
-      if (uData[c][last] !== null && uData[c][last] !== undefined) {
-        allNull = false
-        break
-      }
-    }
-    if (!allNull) break
-    for (let c = 0; c < uData.length; c++) {
-      uData[c].pop()
-    }
-  }
-
-  // Re-add threshold
-  if (hasThreshold && threshData) {
-    threshData = uData[0].map(() => threshData[0])
-    uData.push(threshData)
-    chart.addSeries({ ...THRESHOLD_SERIES }, uData.length - 1)
-  }
-
-  chart.setData(uData)
-  return 0
+  return false
 }
 
 // Build a trend data array aligned to chart timestamps, interpolating gaps

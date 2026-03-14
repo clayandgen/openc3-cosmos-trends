@@ -9,7 +9,7 @@
 
     <v-row>
       <v-col cols="12" md="3">
-        <div v-if="csvMetadata" class="d-flex flex-wrap ga-1 mb-3">
+        <div v-if="csvMetadata || selectedColumn" class="d-flex flex-wrap ga-1 mb-3">
           <v-chip
             v-for="(value, key) in csvMetadata"
             :key="key"
@@ -18,6 +18,14 @@
             color="primary"
           >
             {{ key }}: {{ value }}
+          </v-chip>
+          <v-chip
+            v-if="selectedColumn"
+            size="small"
+            variant="elevated"
+            color="primary"
+          >
+            ITEM: {{ selectedColumn }}
           </v-chip>
         </div>
         <v-card variant="outlined">
@@ -85,6 +93,26 @@
               class="mb-4"
               @update:model-value="$emit('update:threshold', $event != null && $event !== '' && !isNaN(Number($event)) ? Number($event) : null)"
               @click:clear="$emit('update:threshold', null)"
+            />
+            <v-switch
+              v-if="activeTrend"
+              :model-value="showAnomalies"
+              label="Anomaly Detection"
+              density="comfortable"
+              hide-details
+              color="primary"
+              class="mb-2"
+              @update:model-value="$emit('update:showAnomalies', $event)"
+            />
+            <v-select
+              v-if="activeTrend && showAnomalies"
+              :model-value="sigmaN"
+              :items="sigmaOptions"
+              label="Sigma Threshold (σ)"
+              density="comfortable"
+              hide-details
+              class="mb-4"
+              @update:model-value="$emit('update:sigmaN', $event)"
             />
             <v-switch
               v-if="limitsValues"
@@ -168,6 +196,24 @@
                 <div class="text-caption" style="opacity: 0.7">Trend does not reach threshold within the prediction range.</div>
               </div>
 
+              <div v-if="showAnomalies && anomalyResult" class="mb-3">
+                <div class="d-flex align-center text-overline">
+                  Anomalies Detected
+                  <v-tooltip location="right" max-width="300">
+                    <template #activator="{ props }">
+                      <v-icon v-bind="props" size="small" class="ml-1">mdi-information-outline</v-icon>
+                    </template>
+                    Data points where the residual (actual − predicted) exceeds {{ sigmaN }}σ from the mean residual. These points fall outside the expected variation of the trend.
+                  </v-tooltip>
+                </div>
+                <div class="text-h5" :class="anomalyResult.anomalies.length > 0 ? 'text-red' : 'text-green'">
+                  {{ anomalyResult.anomalies.length }}
+                </div>
+                <div class="text-caption">
+                  σ = {{ anomalyResult.sigma.toFixed(4) }} | Threshold: {{ sigmaN }}σ
+                </div>
+              </div>
+
               <div v-if="activeTrend.equation" class="text-overline">
                 Equation
               </div>
@@ -201,6 +247,9 @@ export default {
     showLimits: { type: Boolean, default: false },
     limitsValues: { type: Array, default: null },
     timeZone: { type: String, default: 'local' },
+    anomalyResult: { type: Object, default: null },
+    sigmaN: { type: Number, default: 2 },
+    showAnomalies: { type: Boolean, default: false },
   },
   emits: [
     'back',
@@ -212,6 +261,8 @@ export default {
     'update:horizonSec',
     'update:threshold',
     'update:showLimits',
+    'update:sigmaN',
+    'update:showAnomalies',
   ],
   data() {
     const unitMultipliers = { Seconds: 1, Minutes: 60, Hours: 3600, Days: 86400 }
@@ -227,6 +278,11 @@ export default {
       unitMultipliers,
       horizonUnit: defaultUnit,
       horizonValue: this.horizonSec / unitMultipliers[defaultUnit],
+      sigmaOptions: [
+        { title: '1σ (68%)', value: 1 },
+        { title: '2σ (95%)', value: 2 },
+        { title: '3σ (99.7%)', value: 3 },
+      ],
     }
   },
   watch: {
@@ -245,7 +301,7 @@ export default {
         exponential: 'Rapid growth or decay (y = a\u00B7e^(bx)). Best for data that accelerates over time.',
         logarithmic: 'Fast initial change that levels off (y = a + b\u00B7ln(x)). Good for diminishing returns.',
         power: 'Scaling relationship (y = a\u00B7x^b). Common in physical systems and proportional relationships.',
-        sinusoidal: 'Periodic wave fit (y = A\u00B7sin(Bx+C)+D). Best for cyclic or oscillating data.',
+        sinusoidal: 'Periodic wave fit (y = A\u00B7sin(Bx+C)+D). Best for cyclic or oscillating data. Note: frequency estimation from limited data is approximate, so predictions may drift out of phase over longer horizons.',
       }
       return descriptions[this.trendType] || ''
     },

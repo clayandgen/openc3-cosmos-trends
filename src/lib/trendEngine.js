@@ -81,7 +81,6 @@ export function fitTrend(data, config) {
     r2,
     rmse,
     predict,
-    t0,
     points: result.points,
   }
 }
@@ -139,10 +138,45 @@ function calcR2(data, predictFn) {
   return ssTot === 0 ? 0 : 1 - ssRes / ssTot
 }
 
-const TREND_LABELS = {}
+// Detect anomalies: points where |residual| exceeds sigmaN * stddev
+// data: array of [timestamp, value] pairs
+// predict: function from fitTrend() result
+// sigmaN: number of standard deviations for threshold
+export function detectAnomalies(data, predict, sigmaN = 2) {
+  if (!data || data.length < 2 || !predict) {
+    return { sigma: 0, meanResidual: 0, anomalies: [] }
+  }
 
-function trendLabel(type) {
-  return TREND_LABELS[type] || type.charAt(0).toUpperCase() + type.slice(1)
+  const residuals = []
+  for (const [ts, value] of data) {
+    const predicted = predict(ts)
+    if (isFinite(predicted)) {
+      residuals.push({ ts, value, predicted, residual: value - predicted })
+    }
+  }
+
+  if (residuals.length === 0) {
+    return { sigma: 0, meanResidual: 0, anomalies: [] }
+  }
+
+  const meanResidual =
+    residuals.reduce((sum, r) => sum + r.residual, 0) / residuals.length
+
+  const variance =
+    residuals.reduce((sum, r) => sum + (r.residual - meanResidual) ** 2, 0) /
+    residuals.length
+  const sigma = Math.sqrt(variance)
+
+  const threshold = sigmaN * sigma
+  const anomalies = residuals.filter(
+    (r) => Math.abs(r.residual - meanResidual) > threshold,
+  )
+
+  return { sigma, meanResidual, anomalies }
 }
 
-export { TREND_TYPES, TREND_LABELS, trendLabel }
+function trendLabel(type) {
+  return type.charAt(0).toUpperCase() + type.slice(1)
+}
+
+export { TREND_TYPES, trendLabel }
