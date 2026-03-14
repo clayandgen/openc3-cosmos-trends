@@ -27,6 +27,85 @@ function formatAxisValue(self, rawValue) {
 const TREND_COLOR = '#ff6b6b'
 const THRESHOLD_COLOR = '#ffa726'
 
+// Build a uPlot plugin that draws limit bands (red/yellow/green) behind the data
+function limitsPlugin(limitsRef) {
+  return {
+    hooks: {
+      draw: (u) => {
+        const vals = limitsRef.value
+        if (!vals || vals.length < 4) return
+
+        const { ctx, bbox } = u
+        const yMin = u.valToPos(u.scales.y.min, 'y', true)
+        const yMax = u.valToPos(u.scales.y.max, 'y', true)
+        const redLow = u.valToPos(vals[0], 'y', true)
+        const yellowLow = u.valToPos(vals[1], 'y', true)
+        const yellowHigh = u.valToPos(vals[2], 'y', true)
+        const redHigh = u.valToPos(vals[3], 'y', true)
+
+        // NOTE: Canvas y-axis is inverted (0 at top, grows downward).
+        // valToPos returns canvas coordinates, so "higher" graph values
+        // produce smaller canvas y values.
+
+        ctx.save()
+        ctx.beginPath()
+
+        // Red bands
+        ctx.fillStyle = 'rgba(255,0,0,0.15)'
+        if (u.scales.y.min < vals[0]) {
+          let start = redLow < yMax ? yMax : redLow
+          ctx.fillRect(bbox.left, redLow, bbox.width, yMin - start)
+        }
+        if (u.scales.y.max > vals[3]) {
+          let end = yMin < redHigh ? yMin : redHigh
+          ctx.fillRect(bbox.left, yMax, bbox.width, end - yMax)
+        }
+
+        // Yellow bands
+        ctx.fillStyle = 'rgba(255,255,0,0.15)'
+        if (u.scales.y.min < vals[1] && u.scales.y.max > vals[0]) {
+          let start = yellowLow < yMax ? yMax : yellowLow
+          ctx.fillRect(bbox.left, start, bbox.width, redLow - start)
+        }
+        if (u.scales.y.max > vals[2] && u.scales.y.min < vals[3]) {
+          let start = yMin < redHigh ? yMin : redHigh
+          let end = yMin < yellowHigh ? yMin : yellowHigh
+          ctx.fillRect(bbox.left, start, bbox.width, end - start)
+        }
+
+        // Green / operational bands
+        ctx.fillStyle = 'rgba(0,255,0,0.15)'
+        if (vals.length === 4) {
+          if (u.scales.y.min < vals[2] && u.scales.y.max > vals[1]) {
+            let start = yellowHigh < yMax ? yMax : yellowHigh
+            let end = yMin < yellowLow ? yMin : yellowLow
+            ctx.fillRect(bbox.left, start, bbox.width, end - start)
+          }
+        } else {
+          const greenLow = u.valToPos(vals[4], 'y', true)
+          const greenHigh = u.valToPos(vals[5], 'y', true)
+          if (u.scales.y.min < vals[4] && u.scales.y.max > vals[1]) {
+            let start = greenLow < yMax ? yMax : greenLow
+            ctx.fillRect(bbox.left, start, bbox.width, yellowLow - start)
+          }
+          if (u.scales.y.max > vals[5] && u.scales.y.min < vals[2]) {
+            let start = yMin < yellowHigh ? yMin : yellowHigh
+            let end = yMin < greenHigh ? yMin : greenHigh
+            ctx.fillRect(bbox.left, start, bbox.width, end - start)
+          }
+          ctx.fillStyle = 'rgba(0,0,255,0.15)'
+          let start = greenHigh < yMax ? yMax : greenHigh
+          let end = yMin < greenLow ? yMin : greenLow
+          ctx.fillRect(bbox.left, start, bbox.width, end - start)
+        }
+
+        ctx.stroke()
+        ctx.restore()
+      },
+    },
+  }
+}
+
 const THRESHOLD_SERIES = {
   label: 'Threshold',
   stroke: THRESHOLD_COLOR,
@@ -49,7 +128,7 @@ function buildUData(parsedData, numCols) {
 
 // Create a new uPlot chart and render it into a container
 // Returns { chart, uData }
-export function createChart(container, headerRow, parsedData, existingTrend, threshold, timeZone) {
+export function createChart(container, headerRow, parsedData, existingTrend, threshold, timeZone, limitsRef) {
   if (!container || !parsedData) return null
 
   const numCols = headerRow.length
@@ -135,6 +214,7 @@ export function createChart(container, headerRow, parsedData, existingTrend, thr
       { stroke: '#888', grid: { stroke: 'rgba(255,255,255,0.1)' }, values: (u, vals) => vals.map(v => formatAxisValue(u, v)) },
     ],
     cursor: { drag: { x: true, y: false } },
+    plugins: limitsRef ? [limitsPlugin(limitsRef)] : [],
   }
 
   // Shift dates so uPlot's local-time axis labels display UTC values

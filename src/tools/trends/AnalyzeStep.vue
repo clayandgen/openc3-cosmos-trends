@@ -86,6 +86,16 @@
               @update:model-value="$emit('update:threshold', $event != null && $event !== '' && !isNaN(Number($event)) ? Number($event) : null)"
               @click:clear="$emit('update:threshold', null)"
             />
+            <v-switch
+              v-if="limitsValues"
+              :model-value="showLimits"
+              label="Show Limits"
+              density="comfortable"
+              hide-details
+              color="primary"
+              class="mb-4"
+              @update:model-value="$emit('update:showLimits', $event)"
+            />
             <v-btn color="primary" block @click="$emit('calculate')">
               <v-icon start>mdi-trending-up</v-icon>
               Calculate
@@ -188,6 +198,8 @@ export default {
     horizonSec: { type: Number, default: 43200 },
     activeTrend: { type: Object, default: null },
     threshold: { type: Number, default: null },
+    showLimits: { type: Boolean, default: false },
+    limitsValues: { type: Array, default: null },
     timeZone: { type: String, default: 'local' },
   },
   emits: [
@@ -199,6 +211,7 @@ export default {
     'update:polyOrder',
     'update:horizonSec',
     'update:threshold',
+    'update:showLimits',
   ],
   data() {
     const unitMultipliers = { Seconds: 1, Minutes: 60, Hours: 3600, Days: 86400 }

@@ -31,6 +31,8 @@
       v-model:horizon-sec="horizonSec"
       :active-trend="activeTrend"
       v-model:threshold="threshold"
+      v-model:show-limits="showLimits"
+      :limits-values="limitsValues"
       :time-zone="timeZone"
       @back="goBackToUpload"
       @calculate="calculateTrend"
@@ -75,6 +77,11 @@ export default {
       activeTrend: null,
       threshold: null,
       timeZone: 'local',
+      limitsValues: null,
+      showLimits: false,
+      // Reactive ref object passed into the uPlot plugin so it can
+      // read the current limits without recreating the chart
+      limitsRef: { value: null },
       menus: [
         {
           label: 'File',
@@ -120,6 +127,10 @@ export default {
     threshold(val) {
       this.hasThreshold = updateThreshold(this.chart, this.uData, this.hasThreshold, val)
     },
+    showLimits(val) {
+      this.limitsRef.value = val ? this.limitsValues : null
+      if (this.chart) this.chart.redraw()
+    },
   },
   beforeUnmount() {
     this.destroyChart()
@@ -131,6 +142,10 @@ export default {
       this.csvMetadata = result.metadata
       this.selectedColumn = result.headerRow[1]
       this.activeTrend = null
+      this.limitsValues = null
+      this.showLimits = false
+      this.limitsRef.value = null
+      this.fetchLimits(result.metadata, result.headerRow[1])
     },
 
     renderChart(stepRef, includeExistingTrend = false) {
@@ -153,6 +168,7 @@ export default {
         existingTrend,
         this.threshold,
         this.timeZone,
+        this.limitsRef,
       )
       if (result) {
         this.chart = result.chart
@@ -232,6 +248,28 @@ export default {
       this.step = 1
     },
 
+    async fetchLimits(metadata, itemName) {
+      if (!metadata || !metadata.TARGET || !metadata.PACKET || !itemName) return
+      try {
+        const api = new OpenC3Api()
+        const details = await api.exec('get_item', [metadata.TARGET, metadata.PACKET, itemName], {}, { 'Ignore-Errors': '500' })
+        if (details && details.limits) {
+          for (const [, value] of Object.entries(details.limits)) {
+            if (value && Object.keys(value).includes('red_low')) {
+              const vals = [value.red_low, value.yellow_low, value.yellow_high, value.red_high]
+              if (value.green_low != null && value.green_high != null) {
+                vals.push(value.green_low, value.green_high)
+              }
+              this.limitsValues = vals
+              return
+            }
+          }
+        }
+      } catch (_) {
+        // No limits available — that's fine
+      }
+    },
+
     resetAll() {
       this.destroyChart()
       this.parsedData = null
@@ -240,6 +278,9 @@ export default {
       this.activeTrend = null
       this.threshold = null
       this.trendSeriesCount = 0
+      this.limitsValues = null
+      this.showLimits = false
+      this.limitsRef.value = null
       this.step = 1
     },
 
