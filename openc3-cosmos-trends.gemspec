@@ -5,7 +5,7 @@ Gem::Specification.new do |s|
   s.name = 'openc3-cosmos-trends'
   s.summary = 'Trend Analysis'
   s.description = <<-EOF
-    Tool to analyze trends and make simple predictions based on historical data.
+    Tool to analyze trends and make simple statistical predictions based on historical data.
   EOF
   s.license = 'MIT'
   s.authors = ['Clay Kramp']
@@ -14,7 +14,7 @@ Gem::Specification.new do |s|
   s.platform = Gem::Platform::RUBY
   s.required_ruby_version = '>= 3.0'
     s.metadata = {
-    'openc3_store_keywords' => 'trends,graph,analysis,prediction',
+    'openc3_store_keywords' => 'Trends,Graph,Analysis,Prediction,Anomaly',
     'source_code_uri' => 'https://github.com/clayandgen/openc3-cosmos-trends',
     'openc3_store_access_type' => 'public'
   }

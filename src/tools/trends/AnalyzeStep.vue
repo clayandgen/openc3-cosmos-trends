@@ -90,10 +90,13 @@
               density="comfortable"
               hide-details
               clearable
-              class="mb-4"
+              class="mb-1"
               @update:model-value="$emit('update:threshold', $event != null && $event !== '' && !isNaN(Number($event)) ? Number($event) : null)"
               @click:clear="$emit('update:threshold', null)"
             />
+            <div class="text-caption mb-3" style="opacity: 0.7">
+              Enter a numeric value to draw a horizontal line on the chart. The results will show when the trend is predicted to cross it.
+            </div>
             <v-switch
               v-if="activeTrend"
               :model-value="showAnomalies"
@@ -104,6 +107,9 @@
               class="mb-2"
               @update:model-value="$emit('update:showAnomalies', $event)"
             />
+            <div v-if="activeTrend && showAnomalies" class="text-caption mb-3" style="opacity: 0.7">
+              Highlights data points that deviate more than the selected sigma threshold from the trend line. Higher sigma values flag only the most extreme outliers.
+            </div>
             <v-select
               v-if="activeTrend && showAnomalies"
               :model-value="sigmaN"

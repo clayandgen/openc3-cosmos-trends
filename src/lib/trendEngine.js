@@ -85,26 +85,46 @@ export function fitTrend(data, config) {
   }
 }
 
-// Generate prediction points extending from lastTimestamp into the future
+// Generate prediction points extending from lastTimestamp into the future.
+// Uses a fixed density (points per unit time) so that long horizons don't
+// starve the data range of points and cause a jagged trend line.
 export function generatePredictionPoints(
   predict,
   startTimestamp,
   lastTimestamp,
   horizonSec,
-  numPoints = 200,
 ) {
-  const points = []
-  const totalStart = startTimestamp
-  const totalEnd = lastTimestamp + horizonSec
-  const step = (totalEnd - totalStart) / (numPoints - 1)
+  const dataSpan = lastTimestamp - startTimestamp
+  const futureSpan = horizonSec
 
-  for (let i = 0; i < numPoints; i++) {
-    const x = totalStart + step * i
-    const y = predict(x)
-    if (isFinite(y)) {
-      points.push([x, y])
+  // 200 points over the data range, then proportionally more for the future
+  const dataPoints = 200
+  const futurePoints = dataSpan > 0
+    ? Math.max(50, Math.round(dataPoints * (futureSpan / dataSpan)))
+    : 200
+
+  const points = []
+
+  // Data range
+  if (dataPoints > 1 && dataSpan > 0) {
+    const step = dataSpan / (dataPoints - 1)
+    for (let i = 0; i < dataPoints; i++) {
+      const x = startTimestamp + step * i
+      const y = predict(x)
+      if (isFinite(y)) points.push([x, y])
     }
   }
+
+  // Future range (starts just after lastTimestamp to avoid duplicate)
+  if (futurePoints > 0 && futureSpan > 0) {
+    const step = futureSpan / futurePoints
+    for (let i = 1; i <= futurePoints; i++) {
+      const x = lastTimestamp + step * i
+      const y = predict(x)
+      if (isFinite(y)) points.push([x, y])
+    }
+  }
+
   return points
 }
 
